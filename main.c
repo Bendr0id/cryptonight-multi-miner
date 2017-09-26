@@ -40,6 +40,47 @@
 // I know, it's lazy.
 #define STRATUM_MAX_MESSAGE_LEN_BYTES	4096
 
+#define CRYPTONIGHT_ALGO "CryptoNight"
+#define CRYPTONIGHT_LITE_ALGO "CryptoNight-lite"
+
+// Signed types indicate there is no default value
+// If they are negative, do not set them.
+
+typedef struct _DeviceSettings
+{
+        uint32_t Platform;
+        uint32_t Index;
+        uint32_t Threads;
+        uint32_t rawIntensity;
+        uint32_t Worksize;
+        int32_t CoreFreq;
+        int32_t MemFreq;
+        int32_t FanSpeedPercent;
+        int32_t PowerTune;
+} DeviceSettings;
+
+typedef struct _WorkerInfo
+{
+        char *User;
+        char *Pass;
+        struct _WorkerInfo *NextWorker;
+} WorkerInfo;
+
+// Settings structure for a group of threads mining one algo.
+// These threads may be running on diff GPUs, and there may
+// be multiple threads per GPU.
+typedef struct _AlgoSettings
+{
+    char *AlgoName;
+    uint32_t NumGPUs;
+    DeviceSettings *GPUSettings;
+    uint32_t TotalThreads;
+    uint32_t PoolCount;
+    char **PoolURLs;
+    WorkerInfo *Workers;
+    json_t *AlgoSpecificConfig;
+} AlgoSettings;
+
 typedef struct _StatusInfo
 {
 	uint64_t SolvedWork;
@@ -53,13 +94,6 @@ StatusInfo GlobalStatus;
 
 static cryptonight_func *cryptonight_hash_ctx;
 
-typedef struct _WorkerInfo
-{
-	char *User;
-	char *Pass;
-	struct _WorkerInfo *NextWorker;
-} WorkerInfo;
-
 typedef struct _PoolInfo
 {
 	SOCKET sockfd;
@@ -71,6 +105,7 @@ typedef struct _PoolInfo
 	uint32_t *MinerThreads;
 	atomic_uint StratumID;
 	char XMRAuthID[64];
+	AlgoConfig AlgoConfig;
 } PoolInfo;
 
 atomic_bool *RestartMining;
@@ -162,7 +197,7 @@ void *DaemonUpdateThreadProc(void *Info)
 	uint64_t id = 10;
 	PoolInfo *pbinfo = (PoolInfo *)Info;
 	char s[BIG_BUF_LEN];
-	void *c_ctx = cryptonight_ctx();
+	void *c_ctx = cryptonight_ctx(pbinfo->AlgoConfig);
 
 	pthread_mutex_lock(&QueueMutex);
 	for(;;)
@@ -217,7 +252,9 @@ void *PoolBroadcastThreadProc(void *Info)
 	uint64_t id = 10;
 	PoolInfo *pbinfo = (PoolInfo *)Info;
 	char s[JSON_BUF_LEN];
-	void *c_ctx = cryptonight_ctx();
+	void *c_ctx = cryptonight_ctx(pbinfo->AlgoConfig);
+	uint8_t scratchpad[pbinfo->AlgoConfig.scratchpadSize] __attribute__((aligned(16)));
+
 
 	pthread_mutex_lock(&QueueMutex);
 	for(;;)
@@ -233,7 +270,7 @@ void *PoolBroadcastThreadProc(void *Info)
 			
 			if (!CurShare->Gothash) {
 				((uint32_t *)(CurShare->Job->XMRBlob + 39))[0] = CurShare->Nonce;
-				cryptonight_hash_ctx(HashResult, CurShare->Job->XMRBlob, c_ctx);
+				cryptonight_hash_ctx(HashResult, CurShare->Job->XMRBlob, c_ctx, scratchpad);
 				BinaryToASCIIHex(ASCIIResult, HashResult, 32);
 			} else {
 				BinaryToASCIIHex(ASCIIResult, CurShare->Blob, 32);
@@ -586,7 +623,7 @@ int32_t XMRCleanup(AlgoContext *HashData)
 	free(HashData->GPUIdxs);
 }
 
-int32_t SetupXMRTest(AlgoContext *HashData, OCLPlatform *OCL, uint32_t DeviceIdx)
+int32_t SetupXMRTest(AlgoContext *HashData, OCLPlatform *OCL, AlgoSettings *Settings, uint32_t DeviceIdx)
 {
 	size_t len;
 	cl_int retval;
@@ -694,14 +731,32 @@ int32_t SetupXMRTest(AlgoContext *HashData, OCLPlatform *OCL, uint32_t DeviceIdx
 		return(ERR_OCL_API);
 	}
 	
-	len = LoadTextFile(&KernelSource, "cryptonight.cl");
-	
-	HashData->Program = clCreateProgramWithSource(OCL->Context, 1, (const char **)&KernelSource, NULL, &retval);
-	
-	if(retval != CL_SUCCESS)
+	// cryptonight algo
+	if(!strcmp(Settings->AlgoName, CRYPTONIGHT_ALGO))
 	{
-		Log(LOG_CRITICAL, "Error %d when calling clCreateProgramWithSource on the contents of %s.", retval, "cryptonight.cl");
-		return(ERR_OCL_API);
+		Log(LOG_INFO, "Loading OPENCL CryptoNight algo impl.");	
+		len = LoadTextFile(&KernelSource, "cryptonight.cl");
+		HashData->Program = clCreateProgramWithSource(OCL->Context, 1, (const char **)&KernelSource, NULL, &retval);
+	
+		if(retval != CL_SUCCESS)
+		{	
+			Log(LOG_CRITICAL, "Error %d when calling clCreateProgramWithSource on the contents of %s.", retval, "cryptonight.cl");
+			return(ERR_OCL_API);
+		}
+	}
+
+	// crytponight-lite algo
+	if(!strcmp(Settings->AlgoName, CRYPTONIGHT_LITE_ALGO))
+	{
+		Log(LOG_INFO, "Loading OPENCL CryptoNight-lite algo impl.");
+		len = LoadTextFile(&KernelSource, "cryptonight-lite.cl");
+	        HashData->Program = clCreateProgramWithSource(OCL->Context, 1, (const char **)&KernelSource, NULL, &retval);
+
+        	if(retval != CL_SUCCESS)
+	        {
+        	        Log(LOG_CRITICAL, "Error %d when calling clCreateProgramWithSource on the contents of %s.", retval, "cryptonight-lite.cl");
+                	return(ERR_OCL_API);
+        	}
 	}
 	
 	Options = (char *)malloc(sizeof(char) * 32);
@@ -1316,6 +1371,7 @@ typedef struct _MinerThreadInfo
 	uint32_t TotalMinerThreads;
 	OCLPlatform *PlatformContext;
 	AlgoContext AlgoCtx;
+	AlgoConfig AlgoConfig;
 } MinerThreadInfo;
 
 // Block header is 2 uint512s, 1024 bits - 128 bytes
@@ -1334,6 +1390,7 @@ void *MinerThreadProc(void *Info)
 	struct cryptonight_ctx *ctx;
 	uint32_t *nonceptr = (uint32_t *)((char *)TmpWork + 39);
 	unsigned long hashes_done;
+	uint8_t scratchpad[MTInfo->AlgoConfig.scratchpadSize] __attribute__((aligned(16)));
 	
 	// Generate work for first run.
 	MyJobIdx = JobIdx;
@@ -1348,7 +1405,7 @@ void *MinerThreadProc(void *Info)
 		sprintf(ThrID, "Thread %d, GPU ID %d, GPU Type: %s",
 			MTInfo->ThreadID, *MTInfo->AlgoCtx.GPUIdxs, MTInfo->PlatformContext->Devices[*MTInfo->AlgoCtx.GPUIdxs].DeviceName);
 	} else {
-		ctx = cryptonight_ctx();
+		ctx = cryptonight_ctx(MTInfo->AlgoConfig);
 		*nonceptr = StartNonce;
 		sprintf(ThrID, "Thread %d, (CPU)", MTInfo->ThreadID);
 	}
@@ -1422,7 +1479,7 @@ void *MinerThreadProc(void *Info)
 again:
 			do {
 				*nonceptr = ++n;
-				cryptonight_hash_ctx(hash, TmpWork, ctx);
+				cryptonight_hash_ctx(hash, TmpWork, ctx, scratchpad);
 				if (hash[7] < Target) {
 					found = 1;
 				} else if (atomic_load(RestartMining + MTInfo->ThreadID)) {
@@ -1454,9 +1511,8 @@ again:
 			hashes_done = MTInfo->AlgoCtx.Nonce - PrevNonce;
 		GlobalStatus.ThreadHashCounts[MTInfo->ThreadID] = hashes_done;
 		GlobalStatus.ThreadTimes[MTInfo->ThreadID] = Seconds;
-		pthread_mutex_unlock(&StatusMutex);
 		
-		Log(LOG_INFO, "%s: %.02fH/s", ThrID, hashes_done / (Seconds));
+		pthread_mutex_unlock(&StatusMutex);
 	}
 	
 	if (MTInfo->PlatformContext)
@@ -1484,38 +1540,6 @@ BOOL SigHandler(DWORD signal)
 }
 
 #endif
-
-// Signed types indicate there is no default value
-// If they are negative, do not set them.
-
-typedef struct _DeviceSettings
-{
-	uint32_t Platform;
-	uint32_t Index;
-	uint32_t Threads;
-	uint32_t rawIntensity;
-	uint32_t Worksize;
-	int32_t CoreFreq;
-	int32_t MemFreq;
-	int32_t FanSpeedPercent;
-	int32_t PowerTune;
-} DeviceSettings;
-
-// Settings structure for a group of threads mining one algo.
-// These threads may be running on diff GPUs, and there may
-// be multiple threads per GPU.
-
-typedef struct _AlgoSettings
-{
-	char *AlgoName;
-	uint32_t NumGPUs;
-	DeviceSettings *GPUSettings;
-	uint32_t TotalThreads;
-	uint32_t PoolCount;
-	char **PoolURLs;
-	WorkerInfo *Workers;
-	json_t *AlgoSpecificConfig;
-} AlgoSettings;
 
 int ParseConfigurationFile(char *ConfigFileName, AlgoSettings *Settings)
 {
@@ -1551,6 +1575,12 @@ int ParseConfigurationFile(char *ConfigFileName, AlgoSettings *Settings)
 	{
 		Log(LOG_CRITICAL, "Algorithm name missing or not a string.");
 		return(-1);
+	}
+
+	if (strcmp(json_string_value(AlgoName), CRYPTONIGHT_ALGO) && strcmp(json_string_value(AlgoName), CRYPTONIGHT_LITE_ALGO))
+	{
+		Log(LOG_CRITICAL, "Algorithm name is neither %s nor %s. Please specify one.", CRYPTONIGHT_ALGO, CRYPTONIGHT_LITE_ALGO);
+                return(-1);
 	}
 	
 	json_t *DevsArr = json_object_get(AlgoObj, "devices");
@@ -1751,6 +1781,7 @@ void FreeSettings(AlgoSettings *Settings)
 int main(int argc, char **argv)
 {
 	PoolInfo Pool = {0};
+	AlgoConfig AlgoConfig;
 	AlgoSettings Settings;
 	MinerThreadInfo *MThrInfo;
 	OCLPlatform PlatformContext;
@@ -1770,15 +1801,34 @@ int main(int argc, char **argv)
 	
 	if(ParseConfigurationFile(argv[1], &Settings)) return(0);
 	
+#ifdef WITH_AESNI
+	Log(LOG_CRITICAL, "Compiled with AES-NI checking CPU flags...");	
 	if (__get_cpuid_max(0, &tmp1) >= 1) {
 		__get_cpuid(1, &tmp1, &tmp2, &tmp3, &tmp4);
 		if (tmp3 & 0x2000000)
 			use_aesni = 1;
 	}
+#endif
+
 	if (use_aesni)
 		cryptonight_hash_ctx = cryptonight_hash_aesni;
 	else
 		cryptonight_hash_ctx = cryptonight_hash_dumb;
+
+
+	Log(LOG_INFO, "Configured algo: %s with AES-NI: %s", Settings.AlgoName, use_aesni ? "True" : "False");	
+	if (!strcmp(Settings.AlgoName, CRYPTONIGHT_ALGO))
+	{
+		AlgoConfig.scratchpadSize = (1<<21);
+		AlgoConfig.iterations = (1<<19);
+		AlgoConfig.algoMask = 0x1FFFF0;
+	}
+	else
+	{
+		AlgoConfig.scratchpadSize = (1<<20);
+		AlgoConfig.iterations = (1<<18);	
+		AlgoConfig.algoMask = 0xFFFF0;
+	}
 
 	MThrInfo = (MinerThreadInfo *)malloc(sizeof(MinerThreadInfo) * Settings.TotalThreads);
 	MinerWorker = (pthread_t *)malloc(sizeof(pthread_t) * Settings.TotalThreads);
@@ -1845,6 +1895,7 @@ int main(int argc, char **argv)
 	Pool.WorkerData = Settings.Workers[0];
 	Pool.MinerThreadCount = Settings.TotalThreads;
 	Pool.MinerThreads = (uint32_t *)malloc(sizeof(uint32_t) * Pool.MinerThreadCount);
+	Pool.AlgoConfig = AlgoConfig;
 	
 	for(int i = 0; i < Settings.TotalThreads; ++i) Pool.MinerThreads[i] = Settings.GPUSettings[i].Index;
 	
@@ -1917,7 +1968,7 @@ int main(int argc, char **argv)
 	
 	for(int i = 0; i < Settings.TotalThreads; ++i) atomic_init(RestartMining + i, false);
 	
-	Log(LOG_NOTIFY, "Setting up GPU(s).");
+	Log(LOG_NOTIFY, "Setting up CPU(s)/GPU(s).");
 
 	// Note to self - move this list BS into the InitOpenCLPlatformContext() routine
 	uint32_t *GPUIdxList = (uint32_t *)malloc(sizeof(uint32_t) * Settings.NumGPUs);
@@ -1957,13 +2008,14 @@ int main(int argc, char **argv)
 		for(int x = 0; x < Settings.GPUSettings[GPUIdx].Threads; ++x)
 		{
 			if (Settings.GPUSettings[GPUIdx].Index != -1) {
-				SetupXMRTest(&MThrInfo[ThrIdx + x].AlgoCtx, &PlatformContext, GPUIdx);
+				SetupXMRTest(&MThrInfo[ThrIdx + x].AlgoCtx, &PlatformContext, &Settings, GPUIdx);
 				MThrInfo[ThrIdx + x].PlatformContext = &PlatformContext;
 			} else {
 				MThrInfo[ThrIdx + x].PlatformContext = NULL;
 			}
 			MThrInfo[ThrIdx + x].ThreadID = ThrIdx + x;
 			MThrInfo[ThrIdx + x].TotalMinerThreads = Settings.TotalThreads;
+			MThrInfo[ThrIdx + x].AlgoConfig = AlgoConfig;	
 		}
 	}
 

@@ -1,7 +1,7 @@
 CC		= gcc
 LD		= gcc
 OPT 	= -O2 -s -I/home/wolf/miners/sgminer-builds/sgminer-lin64/include/ -L/home/wolf/miners/sgminer-builds/sgminer-lin64/lib
-CFLAGS 	= -D_POSIX_SOURCE -D_GNU_SOURCE $(OPT) -c -std=c11
+CFLAGS 	= -D_POSIX_SOURCE -D_GNU_SOURCE $(OPT) -c -std=c11 -maes -DWITH_AESNI
 LDFLAGS	= -DPTW32_STATIC_LIB $(OPT)
 LIBS	= -ljansson -lOpenCL -lpthread -ldl
 
@@ -14,7 +14,7 @@ all:
 	$(CC) $(CFLAGS) crypto/c_jh.c -o crypto/c_jh.o
 	$(CC) $(CFLAGS) crypto/c_skein.c -o crypto/c_skein.o
 	$(CC) $(CFLAGS) crypto/oaes_lib.c -o crypto/oaes_lib.o
-	$(CC) $(CFLAGS) -maes cryptonight.c -o cryptonight.o
+	$(CC) $(CFLAGS) cryptonight.c -o cryptonight.o
 	$(CC) $(CFLAGS) log.c -o log.o
 	$(CC) $(CFLAGS) net.c -o net.o
 	$(CC) $(CFLAGS) minerutils.c -o minerutils.o
