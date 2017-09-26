@@ -18,7 +18,6 @@
 #include "crypto/int-util.h"
 #include "crypto/hash-ops.h"
 #include "cryptonight.h"
-#include "minerlog.h"
 
 #undef unlikely
 #undef likely

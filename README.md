@@ -1,7 +1,5 @@
 # wolf-xmr-miner
 
-###NOTE: Wolf's XMR Miner is no longer maintained - please use https://github.com/genesismining/sgminer-gm.
-
 Wolf's OpenCL XMR Miner for AMD GPUs
 
 If you get an error about `clCreateBuffer`, lower your `rawintensity`. See the example config [xmr.conf](xmr.conf) for details.
@@ -49,6 +47,17 @@ make
 ./miner xmr.conf
 ```
 
-# Donations
+Donations
+=========
+Donations for the work done in this fork are accepted :
 
-Donations accepted at: `42QWoLF7pdwMcTXDviJvNkWEHJ4TXnMBh2Cx6HNkVAW57E48Zfw6wLwDUYFDYJAqY7PLJUTz9cHWB5C4wUA7UJPu5wPf4sZ`
+* BTC: `128qLZCaGdoWhBTfaS7rytpbvG4mNTyAQm`
+* XMR: `46FkYo7x6LqYjLQo4Jd84UTGBybW7tsWqJaQVLPhbUSK19ajSTMY9T2Sa2LH6CfWhSingjvQARtfeM4Feekpp2yFR1wsFNT`
+* AEON: `Wmtm4S2cQ8uEBBAVjvbiaVAPv2d6gA1mAUmBmjna4VF7VixLxLRUYag5cvsym3WnuzdJ9zvhQ3Xwa8gWxPDPRfcQ3AUkYra3W`
+
+Credits
+=======
+wolf-multi-miner was forked from Wolf9466's wolf-xmr-miner.
+* [Wolf9466](https://github.com/wolf9466)
+* [hyc](https://github.com/hyc)
+
