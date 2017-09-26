@@ -4,14 +4,15 @@ The fork is based on [Wolf's](https://github.com/wolf9466) OpenCL XMR Miner for 
 
 With this version you can mine CryptoNight and CryptoNight-lite based coins like Monero (XMR) and AEON.
 
-It supports AMD GPU's and/or your CPU.
+It supports AMD GPU's and x64 CPU's.
 
 # Main features:
 
 * CryptoNight support for coins like Monero (XMR).
 * CryptoNight-Lite support for coins like AEON.
-* Use your AMD GPU's and/or your CPU with or without AES-NI
-
+* Support for AMD GPU's and x64 CPU's with or without AES-NI
+* Mining with GPU's and CPU at the same time
+* High performance
 
 Donations
 =========
