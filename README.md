@@ -1,12 +1,52 @@
-# wolf-xmr-miner
+# wolf-multi-miner
 
-Wolf's OpenCL XMR Miner for AMD GPUs
+The fork is based on [Wolf's](https://github.com/wolf9466) OpenCL XMR Miner for AMD GPUs containing and the CPU-mining integration done by [hyc](https://github.com/hyc).
 
-If you get an error about `clCreateBuffer`, lower your `rawintensity`. See the example config [xmr.conf](xmr.conf) for details.
+With this version you can mine CryptoNight and CryptoNight-lite based coins like Monero (XMR) and AEON.
 
-Generally, you want to raise `rawintensity` as high as it will go without error - but remember, 2MiB of GPU RAM is needed for every work-item.
+It supports AMD GPU's and/or your CPU.
 
-The GPU fan, powertune, and clock setting options are accepted, as the configuration routine was ripped from my own full-custom miner, but they do nothing.
+# Main features:
+
+* CryptoNight support for coins like Monero (XMR).
+* CryptoNight-Lite support for coins like AEON.
+* Use your AMD GPU's and/or your CPU with or without AES-NI
+
+
+Donations
+=========
+Donations for the work done in this fork are accepted :
+
+* BTC: `128qLZCaGdoWhBTfaS7rytpbvG4mNTyAQm`
+* XMR: `46FkYo7x6LqYjLQo4Jd84UTGBybW7tsWqJaQVLPhbUSK19ajSTMY9T2Sa2LH6CfWhSingjvQARtfeM4Feekpp2yFR1wsFNT`
+* AEON: `Wmtm4S2cQ8uEBBAVjvbiaVAPv2d6gA1mAUmBmjna4VF7VixLxLRUYag5cvsym3WnuzdJ9zvhQ3Xwa8gWxPDPRfcQ3AUkYra3W`
+
+Credits
+=======
+wolf-multi-miner was forked from Wolf9466's wolf-xmr-miner where hyc added CPU mining.
+
+* [Wolf9466](https://github.com/wolf9466)
+* [hyc](https://github.com/hyc)
+
+
+# Solo mining
+
+Use a URL of "daemon+tcp://<host>:<port>" - requires bitmonerod v0.9.3.1 or newer
+
+# Building
+
+* TBD
+
+# Configuration
+
+* TBD
+
+# Running
+
+* TBD
+
+
+
 
 # hyc's additions (Linux only)
 
@@ -21,9 +61,6 @@ total number of threads you're using, as root.
 
 Also, it can run faster as root, which allows it to use mlock.
 
-# Solo mining
-
-Use a URL of "daemon+tcp://<host>:<port>" - requires bitmonerod v0.9.3.1 or newer
 
 # Building
 
@@ -46,18 +83,3 @@ sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-6 60 --slave /u
 make
 ./miner xmr.conf
 ```
-
-Donations
-=========
-Donations for the work done in this fork are accepted :
-
-* BTC: `128qLZCaGdoWhBTfaS7rytpbvG4mNTyAQm`
-* XMR: `46FkYo7x6LqYjLQo4Jd84UTGBybW7tsWqJaQVLPhbUSK19ajSTMY9T2Sa2LH6CfWhSingjvQARtfeM4Feekpp2yFR1wsFNT`
-* AEON: `Wmtm4S2cQ8uEBBAVjvbiaVAPv2d6gA1mAUmBmjna4VF7VixLxLRUYag5cvsym3WnuzdJ9zvhQ3Xwa8gWxPDPRfcQ3AUkYra3W`
-
-Credits
-=======
-wolf-multi-miner was forked from Wolf9466's wolf-xmr-miner.
-* [Wolf9466](https://github.com/wolf9466)
-* [hyc](https://github.com/hyc)
-
