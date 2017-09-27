@@ -1108,7 +1108,7 @@ void *StratumThreadProc(void *InfoPtr)
 	
 	len = snprintf(s, JSON_BUF_LEN, "{\"method\": \"login\", \"params\": "
 		"{\"login\": \"%s\", \"pass\": \"%s\", "
-		"\"agent\": \"wolf-multi-miner/0.1\"}, \"id\": 1}\r\n\n",
+		"\"agent\": \"cryptonight-multi-miner/0.1\"}, \"id\": 1}\r\n\n",
 		Pool->WorkerData.User, Pool->WorkerData.Pass);
 
 	Log(LOG_NETDEBUG, "Request: %s", s);
