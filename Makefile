@@ -1,6 +1,6 @@
 CC		= gcc
 LD		= gcc
-OPT 	= -O2 -s -I/home/wolf/miners/sgminer-builds/sgminer-lin64/include/ -L/home/wolf/miners/sgminer-builds/sgminer-lin64/lib
+OPT 	= -O2 -s 
 CFLAGS 	= -D_POSIX_SOURCE -D_GNU_SOURCE $(OPT) -c -std=c11 -maes -DWITH_AESNI
 LDFLAGS	= -DPTW32_STATIC_LIB $(OPT)
 LIBS	= -ljansson -lOpenCL -lpthread -ldl
