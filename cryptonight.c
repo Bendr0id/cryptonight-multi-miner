@@ -118,6 +118,8 @@ static inline void xor_blocks_dst(const uint8_t* a, const uint8_t* b, uint8_t* d
 }
 
 struct cryptonight_ctx {
+	uint8_t* scratchpad;
+	uint32_t scratchpadSize;
 	union cn_slow_hash_state state;
 	uint8_t text[INIT_SIZE_BYTE] __attribute((aligned(16)));
 	uint8_t a[AES_BLOCK_SIZE] __attribute__((aligned(16)));
@@ -126,10 +128,11 @@ struct cryptonight_ctx {
 	oaes_ctx* aes_ctx;
 	uint32_t iterations;
 	uint32_t algoMask;
-	uint32_t scratchpadSize;
 };
 
 struct cryptonight_aesni_ctx {
+	uint8_t* scratchpad;
+	uint32_t scratchpadSize;
     union cn_slow_hash_state state;
     uint8_t text[INIT_SIZE_BYTE] __attribute((aligned(16)));
     uint64_t a[AES_BLOCK_SIZE >> 3] __attribute__((aligned(16)));
@@ -138,10 +141,9 @@ struct cryptonight_aesni_ctx {
     oaes_ctx* aes_ctx;
     uint32_t iterations;
     uint32_t algoMask;
-    uint32_t scratchpadSize;
 };
 
-void cryptonight_hash_dumb(void* output, const void* input, struct cryptonight_ctx* ctx, uint8_t* scratchpad) {
+void cryptonight_hash_dumb(void* output, const void* input, struct cryptonight_ctx* ctx) {
 	size_t i, j;
 	keccak1600(input, 76, (uint8_t *)&ctx->state.hs);
 	if (!ctx->aes_ctx)
@@ -158,7 +160,7 @@ void cryptonight_hash_dumb(void* output, const void* input, struct cryptonight_c
 		aesb_pseudo_round_mut(&ctx->text[AES_BLOCK_SIZE * 5], ctx->aes_ctx->key->exp_data);
 		aesb_pseudo_round_mut(&ctx->text[AES_BLOCK_SIZE * 6], ctx->aes_ctx->key->exp_data);
 		aesb_pseudo_round_mut(&ctx->text[AES_BLOCK_SIZE * 7], ctx->aes_ctx->key->exp_data);
-		memcpy(&scratchpad[i], ctx->text, INIT_SIZE_BYTE);
+		memcpy(&ctx->scratchpad[i], ctx->text, INIT_SIZE_BYTE);
 	}
 	
 	xor_blocks_dst(&ctx->state.k[0], &ctx->state.k[32], ctx->a);
@@ -170,36 +172,36 @@ void cryptonight_hash_dumb(void* output, const void* input, struct cryptonight_c
 		 * next address  <-+
 		/* Iteration 1 */
 		j = ((uint32_t *)ctx->a)[0] & ctx->algoMask;
-		aesb_single_round(&scratchpad[j], ctx->c, ctx->a);
-		xor_blocks_dst(ctx->c, ctx->b, &scratchpad[j]);
+		aesb_single_round(&ctx->scratchpad[j], ctx->c, ctx->a);
+		xor_blocks_dst(ctx->c, ctx->b, &ctx->scratchpad[j]);
 		/* Iteration 2 */
-		mul_sum_xor_dst(ctx->c, ctx->a, &scratchpad[((uint32_t *)ctx->c)[0] & ctx->algoMask]); 
+		mul_sum_xor_dst(ctx->c, ctx->a, &ctx->scratchpad[((uint32_t *)ctx->c)[0] & ctx->algoMask]); 
 		/* Iteration 3 */
 		j = ((uint32_t *)ctx->a)[0] & ctx->algoMask;
-		aesb_single_round(&scratchpad[j], ctx->b, ctx->a);
-		xor_blocks_dst(ctx->b, ctx->c, &scratchpad[j]);
+		aesb_single_round(&ctx->scratchpad[j], ctx->b, ctx->a);
+		xor_blocks_dst(ctx->b, ctx->c, &ctx->scratchpad[j]);
 		/* Iteration 4 */
-		mul_sum_xor_dst(ctx->b, ctx->a, &scratchpad[((uint32_t *)ctx->b)[0] & ctx->algoMask]);
+		mul_sum_xor_dst(ctx->b, ctx->a, &ctx->scratchpad[((uint32_t *)ctx->b)[0] & ctx->algoMask]);
 	}
 
 	memcpy(ctx->text, ctx->state.init, INIT_SIZE_BYTE);
 	oaes_key_import_data(ctx->aes_ctx, &ctx->state.hs.b[32], AES_KEY_SIZE);
 	for (i = 0; (i < ctx->scratchpadSize); i += INIT_SIZE_BYTE) {
-		xor_blocks(&ctx->text[0 * AES_BLOCK_SIZE], &scratchpad[i + 0 * AES_BLOCK_SIZE]);
+		xor_blocks(&ctx->text[0 * AES_BLOCK_SIZE], &ctx->scratchpad[i + 0 * AES_BLOCK_SIZE]);
 		aesb_pseudo_round_mut(&ctx->text[0 * AES_BLOCK_SIZE], ctx->aes_ctx->key->exp_data);
-		xor_blocks(&ctx->text[1 * AES_BLOCK_SIZE], &scratchpad[i + 1 * AES_BLOCK_SIZE]);
+		xor_blocks(&ctx->text[1 * AES_BLOCK_SIZE], &ctx->scratchpad[i + 1 * AES_BLOCK_SIZE]);
 		aesb_pseudo_round_mut(&ctx->text[1 * AES_BLOCK_SIZE], ctx->aes_ctx->key->exp_data);
-		xor_blocks(&ctx->text[2 * AES_BLOCK_SIZE], &scratchpad[i + 2 * AES_BLOCK_SIZE]);
+		xor_blocks(&ctx->text[2 * AES_BLOCK_SIZE], &ctx->scratchpad[i + 2 * AES_BLOCK_SIZE]);
 		aesb_pseudo_round_mut(&ctx->text[2 * AES_BLOCK_SIZE], ctx->aes_ctx->key->exp_data);
-		xor_blocks(&ctx->text[3 * AES_BLOCK_SIZE], &scratchpad[i + 3 * AES_BLOCK_SIZE]);
+		xor_blocks(&ctx->text[3 * AES_BLOCK_SIZE], &ctx->scratchpad[i + 3 * AES_BLOCK_SIZE]);
 		aesb_pseudo_round_mut(&ctx->text[3 * AES_BLOCK_SIZE], ctx->aes_ctx->key->exp_data);
-		xor_blocks(&ctx->text[4 * AES_BLOCK_SIZE], &scratchpad[i + 4 * AES_BLOCK_SIZE]);
+		xor_blocks(&ctx->text[4 * AES_BLOCK_SIZE], &ctx->scratchpad[i + 4 * AES_BLOCK_SIZE]);
 		aesb_pseudo_round_mut(&ctx->text[4 * AES_BLOCK_SIZE], ctx->aes_ctx->key->exp_data);
-		xor_blocks(&ctx->text[5 * AES_BLOCK_SIZE], &scratchpad[i + 5 * AES_BLOCK_SIZE]);
+		xor_blocks(&ctx->text[5 * AES_BLOCK_SIZE], &ctx->scratchpad[i + 5 * AES_BLOCK_SIZE]);
 		aesb_pseudo_round_mut(&ctx->text[5 * AES_BLOCK_SIZE], ctx->aes_ctx->key->exp_data);
-		xor_blocks(&ctx->text[6 * AES_BLOCK_SIZE], &scratchpad[i + 6 * AES_BLOCK_SIZE]);
+		xor_blocks(&ctx->text[6 * AES_BLOCK_SIZE], &ctx->scratchpad[i + 6 * AES_BLOCK_SIZE]);
 		aesb_pseudo_round_mut(&ctx->text[6 * AES_BLOCK_SIZE], ctx->aes_ctx->key->exp_data);
-		xor_blocks(&ctx->text[7 * AES_BLOCK_SIZE], &scratchpad[i + 7 * AES_BLOCK_SIZE]);
+		xor_blocks(&ctx->text[7 * AES_BLOCK_SIZE], &ctx->scratchpad[i + 7 * AES_BLOCK_SIZE]);
 		aesb_pseudo_round_mut(&ctx->text[7 * AES_BLOCK_SIZE], ctx->aes_ctx->key->exp_data);
 	}
 	memcpy(ctx->state.init, ctx->text, INIT_SIZE_BYTE);
@@ -292,7 +294,7 @@ static inline void ExpandAESKey256(char *keybuf)
 	keys[14] = tmp1;
 }
 
-void cryptonight_hash_aesni(void *restrict output, const void *restrict input, struct cryptonight_ctx *restrict ct0, uint8_t *restrict scratchpad)
+void cryptonight_hash_aesni(void *restrict output, const void *restrict input, struct cryptonight_ctx *restrict ct0)
 {
     struct cryptonight_aesni_ctx *ctx = (struct cryptonight_aesni_ctx *)ct0;
 
@@ -305,7 +307,7 @@ void cryptonight_hash_aesni(void *restrict output, const void *restrict input, s
     ExpandAESKey256(ExpandedKey);
 
     __m128i *longoutput, *expkey, *xmminput;
-	longoutput = (__m128i *)scratchpad;
+	longoutput = (__m128i *)ctx->scratchpad;
 	expkey = (__m128i *)ExpandedKey;
 	xmminput = (__m128i *)ctx->text;
 
@@ -348,18 +350,18 @@ void cryptonight_hash_aesni(void *restrict output, const void *restrict input, s
 
 	for(i = 0; __builtin_expect(i < ctx->iterations, 1); i++)
 	{
-	__m128i c_x = _mm_load_si128((__m128i *)&scratchpad[a[0] & ctx->algoMask]);
+	__m128i c_x = _mm_load_si128((__m128i *)&ctx->scratchpad[a[0] & ctx->algoMask]);
 	__m128i a_x = _mm_load_si128((__m128i *)a);
 	uint64_t c[2];
 	c_x = _mm_aesenc_si128(c_x, a_x);
 
 	_mm_store_si128((__m128i *)c, c_x);
-	__builtin_prefetch(&scratchpad[c[0] & ctx->algoMask], 0, 1);
+	__builtin_prefetch(&ctx->scratchpad[c[0] & ctx->algoMask], 0, 1);
 
 	b_x = _mm_xor_si128(b_x, c_x);
-	_mm_store_si128((__m128i *)&scratchpad[a[0] & ctx->algoMask], b_x);
+	_mm_store_si128((__m128i *)&ctx->scratchpad[a[0] & ctx->algoMask], b_x);
 
-	uint64_t *nextblock = (uint64_t *)&scratchpad[c[0] & ctx->algoMask];
+	uint64_t *nextblock = (uint64_t *)&ctx->scratchpad[c[0] & ctx->algoMask];
 	uint64_t b[2];
 	b[0] = nextblock[0];
 	b[1] = nextblock[1];
@@ -378,14 +380,14 @@ void cryptonight_hash_aesni(void *restrict output, const void *restrict input, s
 	  a[0] += hi;
 	  a[1] += lo;
 	}
-	uint64_t *dst = &scratchpad[c[0] & ctx->algoMask];
+	uint64_t *dst = &ctx->scratchpad[c[0] & ctx->algoMask];
 	dst[0] = a[0];
 	dst[1] = a[1];
 
 	a[0] ^= b[0];
 	a[1] ^= b[1];
 	b_x = c_x;
-	__builtin_prefetch(&scratchpad[a[0] & ctx->algoMask], 0, 3);
+	__builtin_prefetch(&ctx->scratchpad[a[0] & ctx->algoMask], 0, 3);
 	}
 
     memcpy(ctx->text, ctx->state.init, INIT_SIZE_BYTE);
@@ -427,9 +429,11 @@ void cryptonight_hash_aesni(void *restrict output, const void *restrict input, s
 
 struct cryptonight_ctx* cryptonight_ctx(AlgoConfig AlgoConfig){
 	struct cryptonight_ctx *ret;
+	uint8_t *scratchpad;
 
 #ifdef _WIN32
 	ret = calloc(1, sizeof(*ret));
+	scratchpad = calloc(1, sizeof(AlgoConfig.scratchpadSize));
 #else
 	ret = mmap(0, sizeof(*ret), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_HUGETLB|MAP_POPULATE, 0, 0);
 	if (ret == MAP_FAILED)
@@ -439,8 +443,18 @@ struct cryptonight_ctx* cryptonight_ctx(AlgoConfig AlgoConfig){
 		if (!geteuid())
 			mlock(ret, sizeof(*ret));
 	}
+
+	scratchpad = mmap(0, AlgoConfig.scratchpadSize, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_HUGETLB|MAP_POPULATE, 0, 0);
+	if (scratchpad == MAP_FAILED)
+		scratchpad = calloc(1, AlgoConfig.scratchpadSize);
+	if (ret) {
+		madvise(scratchpad, AlgoConfig.scratchpadSize, MADV_RANDOM|MADV_WILLNEED|MADV_HUGEPAGE);
+		if (!geteuid())
+			mlock(scratchpad, AlgoConfig.scratchpadSize);
+	}
 #endif
 
+	ret->scratchpad = scratchpad;
 	ret->iterations = AlgoConfig.iterations;
 	ret->algoMask = AlgoConfig.algoMask;
 	ret->scratchpadSize = AlgoConfig.scratchpadSize;
