@@ -1,18 +1,16 @@
-# wolf-multi-miner
+# cryptonight-multi-miner (forked from wolf-xmr-miner)
 
-The fork is based on [Wolf's](https://github.com/wolf9466) OpenCL XMR Miner for AMD GPUs containing and the CPU-mining integration done by [hyc](https://github.com/hyc).
+BenDroid's OpenCL/CPU miner for CryptoNight and CryptoNight-lite based coins like Monero (XMR) and AEON.
 
-With this version you can mine CryptoNight and CryptoNight-lite based coins like Monero (XMR) and AEON.
-
-It supports AMD GPU's and x64 CPU's.
+The fork is based on [Wolf's](https://github.com/wolf9466) OpenCL XMR Miner for AMD GPUs and the CPU-mining integration done by [hyc](https://github.com/hyc).
 
 # Main features:
 
+* High performance
+* Mining with GPU's and CPU at the same time
 * CryptoNight support for coins like Monero (XMR).
 * CryptoNight-Lite support for coins like AEON.
-* Support for AMD GPU's and x64 CPU's with or without AES-NI
-* Mining with GPU's and CPU at the same time
-* High performance
+* Support for AMD GPU's and x86/x64 CPU's with or without AES-NI
 
 Donations
 =========
