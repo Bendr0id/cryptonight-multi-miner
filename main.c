@@ -53,10 +53,6 @@ typedef struct _DeviceSettings
         uint32_t Threads;
         uint32_t rawIntensity;
         uint32_t Worksize;
-        int32_t CoreFreq;
-        int32_t MemFreq;
-        int32_t FanSpeedPercent;
-        int32_t PowerTune;
 } DeviceSettings;
 
 typedef struct _WorkerInfo
@@ -85,6 +81,7 @@ typedef struct _StatusInfo
 {
 	uint64_t SolvedWork;
 	uint64_t RejectedWork;
+	double TotalHashRated;
 	double *ThreadHashCounts;
 	double *ThreadTimes;
 } StatusInfo;
@@ -496,17 +493,6 @@ int32_t RunXMRTest(AlgoContext *HashData, void *HashOutput)
 			return(ERR_OCL_API);
 		}
 	}
-	
-	/*for(int i = 1; i < 3; ++i)
-	{
-		retval = clEnqueueNDRangeKernel(*HashData->CommandQueues, HashData->Kernels[i], 1, &HashData->Nonce, &GlobalThreads, &LocalThreads, 0, NULL, NULL);
-	
-		if(retval != CL_SUCCESS)
-		{
-			Log(LOG_CRITICAL, "Error %d when calling clEnqueueNDRangeKernel for kernel %d.", retval, i);
-			return(ERR_OCL_API);
-		}
-	}*/
 	
 	retval = clEnqueueNDRangeKernel(*HashData->CommandQueues, HashData->Kernels[1], 1, &HashData->Nonce, &GlobalThreads, &LocalThreads, 0, NULL, NULL);
 	
@@ -979,7 +965,7 @@ retry:
 		rlen = 0;
 
 		json_t *msg, *result, *err;
-		double TotalHashrate = 0;
+		double CurrentHashRate = 0;
 
 		Log(LOG_NETDEBUG, "Got something: %s", tmsg);
 		msg = json_loads(tmsg, 0, NULL);
@@ -1075,10 +1061,16 @@ retry:
 
 		for(int i = 0; i < Pool->MinerThreadCount; ++i)
 		{
-			TotalHashrate += GlobalStatus.ThreadHashCounts[i] / GlobalStatus.ThreadTimes[i];
+			if (GlobalStatus.ThreadHashCounts[i] > 0)
+			{
+				CurrentHashRate += GlobalStatus.ThreadHashCounts[i] / GlobalStatus.ThreadTimes[i];
+			}
 		}
 
-		Log(LOG_INFO, "Total Hashrate: %.02fH/s\n", TotalHashrate);
+		GlobalStatus.TotalHashRated += CurrentHashRate;
+
+		Log(LOG_INFO, "Current Hashrate: %.02fH/s AVG: %.02fH/s\n", CurrentHashRate, 
+			GlobalStatus.TotalHashRated/(GlobalStatus.SolvedWork + GlobalStatus.RejectedWork));
 
 		pthread_mutex_unlock(&StatusMutex);
 
@@ -1229,7 +1221,7 @@ reauth:
 				// Otherwise, it's the first job.
 				if(!authid)
 				{
-					double TotalHashrate = 0;
+					double CurrentHashRate = 0;
 					json_t *result = json_object_get(msg, "result");
 					json_t *err = json_object_get(msg, "error");
 					
@@ -1251,14 +1243,20 @@ reauth:
 							goto reauth;
 						}
 					}
-					
+
 					for(int i = 0; i < Pool->MinerThreadCount; ++i)
 					{
-						TotalHashrate += GlobalStatus.ThreadHashCounts[i] / GlobalStatus.ThreadTimes[i];
+						if (GlobalStatus.ThreadHashCounts[i] > 0)
+						{
+							CurrentHashRate += GlobalStatus.ThreadHashCounts[i] / GlobalStatus.ThreadTimes[i];
+						}
 					}
-					
-					Log(LOG_INFO, "Total Hashrate: %.02fH/s\n", TotalHashrate);
-					
+
+					GlobalStatus.TotalHashRated += CurrentHashRate;
+
+					Log(LOG_INFO, "Current Hashrate: %.02fH/s AVG: %.02fH/s\n", CurrentHashRate, 
+						GlobalStatus.TotalHashRated/(GlobalStatus.SolvedWork + GlobalStatus.RejectedWork));
+
 					pthread_mutex_unlock(&StatusMutex);
 				}
 				else
@@ -1391,7 +1389,7 @@ void *MinerThreadProc(void *Info)
 	
 	// Generate work for first run.
 	MyJobIdx = JobIdx;
-	MyJob = CurrentJob;
+	MyJob = (JobInfo *)CurrentJob;
 	memcpy(TmpWork, MyJob->XMRBlob, sizeof(MyJob->XMRBlob));
 	Target = MyJob->XMRTarget;
 	
@@ -1420,7 +1418,7 @@ void *MinerThreadProc(void *Info)
 		{
 			Log(LOG_DEBUG, "%s: Detected new job, regenerating work.", ThrID);
 			MyJobIdx = JobIdx;
-			MyJob = CurrentJob;
+			MyJob = (JobInfo *)CurrentJob;
 			memcpy(TmpWork, MyJob->XMRBlob, sizeof(MyJob->XMRBlob));
 			Target = MyJob->XMRTarget;
 			
@@ -1643,60 +1641,6 @@ int ParseConfigurationFile(char *ConfigFileName, AlgoSettings *Settings)
 		else Settings->GPUSettings[i].Threads = 1;
 		
 		Settings->TotalThreads += Settings->GPUSettings[i].Threads;
-		
-		num = json_object_get(DeviceObj, "corefreq");
-		
-		if(num && !json_is_integer(num))
-		{
-			Log(LOG_CRITICAL, "Argument to corefreq in device structure #%d for algo %s is not an integer.", i, json_string_value(AlgoName));
-			free(Settings->GPUSettings);
-			return(-1);
-		}
-		
-		if(num) Settings->GPUSettings[i].CoreFreq = json_integer_value(num);
-		else Settings->GPUSettings[i].CoreFreq = -1;
-		
-		num = json_object_get(DeviceObj, "memfreq");
-		
-		if(num && !json_is_integer(num))
-		{
-			Log(LOG_CRITICAL, "Argument to memfreq in device structure #%d for algo %s is not an integer.", i, json_string_value(AlgoName));
-			free(Settings->GPUSettings);
-			return(-1);
-		}
-		
-		if(num) Settings->GPUSettings[i].MemFreq = json_integer_value(num);
-		else Settings->GPUSettings[i].MemFreq = -1;
-		
-		num = json_object_get(DeviceObj, "fanspeed");
-		
-		if(num && !json_is_integer(num))
-		{
-			Log(LOG_CRITICAL, "Argument to fanspeed in device structure #%d for algo %s is not an integer.", i, json_string_value(AlgoName));
-			free(Settings->GPUSettings);
-			return(-1);
-		}
-		
-		if(num && ((json_integer_value(num) > 100) || (json_integer_value(num) < 0)))
-		{
-			Log(LOG_CRITICAL, "Argument to fanspeed in device structure #%d for algo %s is not a valid percentage (0 - 100).", i, json_string_value(AlgoName));
-			free(Settings->GPUSettings);
-		}
-		
-		if(num) Settings->GPUSettings[i].FanSpeedPercent = json_integer_value(num);
-		else Settings->GPUSettings[i].FanSpeedPercent = -1;
-		
-		num = json_object_get(DeviceObj, "powertune");
-		
-		if(num && !json_is_integer(num))
-		{
-			Log(LOG_CRITICAL, "Argument to powertune in device structure #%d for algo %s is not an integer.", i, json_string_value(AlgoName));
-			free(Settings->GPUSettings);
-			return(-1);
-		}
-		
-		if(num) Settings->GPUSettings[i].PowerTune = json_integer_value(num);
-		else Settings->GPUSettings[i].PowerTune = 0;
 	}
 	
 	// Remove the devices part from the algo object; it's
@@ -1798,8 +1742,8 @@ int main(int argc, char **argv)
 	
 	if(ParseConfigurationFile(argv[1], &Settings)) return(0);
 	
-#ifdef WITH_AESNI
-	Log(LOG_CRITICAL, "Compiled with AES-NI checking CPU flags...");	
+#ifndef WITHOUT_CPU_CHECK
+	Log(LOG_CRITICAL, "Compiled with CPU check. Checking CPU flags for AES-NI...");	
 	if (__get_cpuid_max(0, &tmp1) >= 1) {
 		__get_cpuid(1, &tmp1, &tmp2, &tmp3, &tmp4);
 		if (tmp3 & 0x2000000)
@@ -1813,7 +1757,7 @@ int main(int argc, char **argv)
 		cryptonight_hash_ctx = cryptonight_hash_dumb;
 
 
-	Log(LOG_INFO, "Configured algo: %s with AES-NI: %s", Settings.AlgoName, use_aesni ? "True" : "False");	
+	Log(LOG_INFO, "Configuration -> Algo: %s, AES-NI: %s, Threads: %d", Settings.AlgoName, use_aesni ? "True" : "False", Settings.TotalThreads);	
 	if (!strcmp(Settings.AlgoName, CRYPTONIGHT_ALGO))
 	{
 		AlgoConfig.scratchpadSize = (1<<21);
@@ -1901,67 +1845,13 @@ int main(int argc, char **argv)
 	
 	GlobalStatus.RejectedWork = 0;
 	GlobalStatus.SolvedWork = 0;
+	GlobalStatus.TotalHashRated = 0;
 	
 	for(int i = 0; i < Settings.TotalThreads; ++i)
 	{
 		GlobalStatus.ThreadHashCounts[i] = 0;
 		GlobalStatus.ThreadTimes[i] = 0;
 	}
-	
-	// Initialize ADL and apply settings to card
-	
-	/*ADLInit();
-	
-	for(int i = 0; i < Settings.NumGPUs; ++i)
-	{
-		ADLAdapterDynInfo Info;
-		
-		ret = ADLGetStateInfo(Settings.GPUSettings[i].Index, &Info);
-		
-		if(ret)
-			Log(LOG_ERROR, "ADLGetStateInfo() failed for GPU #%d with code %d.", Settings.GPUSettings[i].Index, ret);
-		
-		Log(LOG_INFO, "Adapter #%d - Fan Speed: %dRPM; Core Clock: %dMhz; Mem Clock: %dMhz; Core Voltage: %dmV; PowerTune: %d; Temp: %.03fC", Settings.GPUSettings[i].Index, Info.FanSpeedRPM, Info.CoreClock, Info.MemClock, Info.CoreVolts, Info.PowerTune, Info.Temp);
-		
-		if(Settings.GPUSettings[i].FanSpeedPercent >= 0)
-		{
-			ret = ADLSetFanspeed(Settings.GPUSettings[i].Index, Settings.GPUSettings[i].FanSpeedPercent);
-			
-			if(ret)
-				Log(LOG_ERROR, "ADLSetFanspeed() failed for GPU #%d with code %d.", Settings.GPUSettings[i].Index, ret);
-			else
-				Log(LOG_INFO, "Setting fan speed for GPU #%d to %d%% succeeded.", Settings.GPUSettings[i].Index, Settings.GPUSettings[i].FanSpeedPercent);
-		}
-		
-		// If either of these are positive, a call to ADLSetClocks is needed
-		if((Settings.GPUSettings[i].CoreFreq >= 0) || (Settings.GPUSettings[i].MemFreq >= 0))
-		{
-			// If corefreq wasn't set, set memfreq. If memfreq wasn't, vice versa.
-			// If both were set, then set both.
-			if(Settings.GPUSettings[i].CoreFreq < 0)
-				ret = ADLSetClocks(Settings.GPUSettings[i].Index, 0, Settings.GPUSettings[i].MemFreq);
-			else if(Settings.GPUSettings[i].MemFreq < 0)
-				ret = ADLSetClocks(Settings.GPUSettings[i].Index, Settings.GPUSettings[i].CoreFreq, 0);
-			else
-				ret = ADLSetClocks(Settings.GPUSettings[i].Index, Settings.GPUSettings[i].CoreFreq, Settings.GPUSettings[i].MemFreq);
-			
-			if(ret)
-				Log(LOG_ERROR, "ADLSetClocks() failed for GPU #%d with code %d.", Settings.GPUSettings[i].Index, ret);
-			else
-				Log(LOG_INFO, "Setting clocks on GPU #%d to %d/%d succeeded.", Settings.GPUSettings[i].Index, Settings.GPUSettings[i].CoreFreq, Settings.GPUSettings[i].MemFreq);
-		}
-		
-		if(Settings.GPUSettings[i].PowerTune)
-		{
-			ret = ADLSetPowertune(Settings.GPUSettings[i].Index, Settings.GPUSettings[i].PowerTune);
-			
-			if(ret < 0) Log(LOG_ERROR, "ADLSetPowertune failed for GPU #%d with code %d.", Settings.GPUSettings[i].Index, ret);
-			else Log(LOG_INFO, "Setting powertune on GPU #%d to %d succeeded.", Settings.GPUSettings[i].Index, Settings.GPUSettings[i].PowerTune);
-		}
-	}
-	
-	Log(LOG_INFO, "Sleeping for 10s to allow fan to spin up/down...");
-	sleep(10);*/
 	
 	for(int i = 0; i < Settings.TotalThreads; ++i) atomic_init(RestartMining + i, false);
 	
